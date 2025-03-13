@@ -227,8 +227,8 @@ document.addEventListener("DOMContentLoaded", async function () {
                 "Field Review Not Needed": document.getElementById("field-review-needed").checked,
                 "Field Review Needed": document.getElementById("field-review-not-needed").checked,
                 "Subcontractor Payment": parseFloat(document.getElementById("subcontractor-payment").value) || 0,
-                "FormattedEndDate": parseFloat(document.getElementById("FormattedEndDate").value) || 0,
-                "FormattedStartDate": parseFloat(document.getElementById("FormattedStartDate").value) || 0,
+                "EndDate": parseFloat(document.getElementById("FormattedEndDate").value) || 0,
+                "StartDate": parseFloat(document.getElementById("FormattedStartDate").value) || 0,
 
                 "Materials Needed": document.getElementById("materials-needed").value,
                 "Field Tech Reviewed": document.getElementById("field-tech-reviewed").checked,
