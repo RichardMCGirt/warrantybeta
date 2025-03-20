@@ -1474,38 +1474,48 @@ document.addEventListener("DOMContentLoaded", () => {
                 headers: { Authorization: `Bearer ${window.env.AIRTABLE_API_KEY}` }
             });
     
+            console.log(`📡 Primary API response status: ${primaryResponse.status}`);
+    
             if (!primaryResponse.ok) {
                 throw new Error(`❌ Error fetching primary record: ${primaryResponse.statusText}`);
             }
     
             const primaryData = await primaryResponse.json();
+            console.log("📥 Primary data fetched:", primaryData);
+    
             const branchB = primaryData.fields?.b;
+            console.log("📌 Extracted Branch `b`:", branchB);
     
             if (!branchB) {
                 console.warn("⚠️ No branch `b` found for this record.");
                 return;
             }
     
-            console.log(`📌 Found Branch 'b': ${branchB}`);
-    
-            // 2️⃣ Fetch subcontractors based on the branch
+            // 2️⃣ Fetch subcontractors based on the branch (handling multiple branches per subcontractor)
+            console.log(`🔍 Fetching subcontractors for branch: ${branchB}`);
             let allSubcontractors = await fetchAllSubcontractors(airtableBaseId, subcontractorTableId, branchB);
     
+            console.log(`📊 Total subcontractors filtered by branch '${branchB}': ${allSubcontractors.length}`);
+    
             // 3️⃣ Populate the dropdown
+            console.log("📤 Populating dropdown with subcontractors...");
             populateSubcontractorDropdown(allSubcontractors);
+            console.log("✅ Dropdown populated successfully.");
     
         } catch (error) {
             console.error("❌ Error fetching subcontractors:", error);
         }
     }
     
-    // 🔹 Function to fetch all subcontractors (Handles offsets)
+    // 🔹 Function to fetch all subcontractors (Handles offsets & multiple branches per subcontractor)
     async function fetchAllSubcontractors(baseId, tableId, branchB) {
         let allRecords = [];
         let offset = null;
     
+        console.log(`🔄 Initiating subcontractor fetch for branch '${branchB}' (handling multiple branches per sub)`);
+    
         do {
-            let url = `https://api.airtable.com/v0/${baseId}/${tableId}?filterByFormula=${encodeURIComponent(`{Vanir Branch} = '${branchB}'`)}&fields[]=Subcontractor Company Name&fields[]=Vanir Branch`;
+            let url = `https://api.airtable.com/v0/${baseId}/${tableId}?fields[]=Subcontractor Company Name&fields[]=Vanir Branch`;
             if (offset) {
                 url += `&offset=${offset}`;
             }
@@ -1516,25 +1526,50 @@ document.addEventListener("DOMContentLoaded", () => {
                 headers: { Authorization: `Bearer ${window.env.AIRTABLE_API_KEY}` }
             });
     
+            console.log(`📡 Subcontractors API response status: ${response.status}`);
+    
             if (!response.ok) {
                 throw new Error(`❌ Error fetching subcontractors: ${response.statusText}`);
             }
     
             const data = await response.json();
+            console.log("📥 Subcontractor data fetched:", data);
+    
             allRecords.push(...data.records);
+    
+            console.log(`📊 Current count of subcontractors retrieved: ${allRecords.length}`);
     
             // If Airtable returns an offset, we need to fetch more records
             offset = data.offset || null;
+            if (offset) {
+                console.log("🔄 More records to fetch, proceeding with next batch...");
+            }
     
         } while (offset);
     
-        console.log(`📦 Retrieved ${allRecords.length} total subcontractors from Airtable.`);
+        console.log(`✅ Total subcontractors retrieved from Airtable: ${allRecords.length}`);
     
-        return allRecords.map(record => ({
+        // 3️⃣ Filter subcontractors where `Vanir Branch` includes `branchB`
+        const filteredSubcontractors = allRecords.filter(record => {
+            const branchField = record.fields['Vanir Branch'];
+            if (!branchField) return false; // Skip records without a branch
+    
+            // Convert branchField to an array (if stored as a string)
+            const branchArray = Array.isArray(branchField) ? branchField : branchField.split(',').map(b => b.trim());
+    
+            return branchArray.includes(branchB);
+        });
+    
+        console.log(`✅ Subcontractors after filtering by branch '${branchB}': ${filteredSubcontractors.length}`);
+    
+        return filteredSubcontractors.map(record => ({
             name: record.fields['Subcontractor Company Name'] || 'Unnamed Subcontractor',
             vanirOffice: record.fields['Vanir Branch'] || 'Unknown Branch'
         }));
     }
+    
+    
+    
     
     async function getExistingDropboxLink(filePath) {
         const url = "https://api.dropboxapi.com/2/sharing/list_shared_links";
