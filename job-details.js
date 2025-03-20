@@ -1218,61 +1218,61 @@ document.addEventListener("DOMContentLoaded", () => {
      
     // 🔹 Fetch Dropbox Token from Airtable
     async function fetchDropboxToken() {
-        try {
-            const url = `https://api.airtable.com/v0/${airtableBaseId}/tbl6EeKPsNuEvt5yJ?maxRecords=1&view=viwMlo3nM8JDCIMyV`;
+        console.log("🔄 Fetching Dropbox Token from Airtable...");
     
-            console.log("🔄 Fetching latest Dropbox credentials from Airtable...");
+        try {
+            const url = `https://api.airtable.com/v0/${window.env.AIRTABLE_BASE_ID}/${window.env.AIRTABLE_TABLE_NAME}?view=viwMlo3nM8JDCIMyV&maxRecords=1`;
+    
             const response = await fetch(url, {
-                headers: { Authorization: `Bearer ${airtableApiKey}` }
+                headers: { Authorization: `Bearer ${window.env.AIRTABLE_API_KEY}` }
             });
     
             if (!response.ok) {
-                throw new Error(`❌ Error fetching Dropbox token: ${response.statusText}`);
+                throw new Error(`❌ Error fetching Dropbox Token: ${response.statusText}`);
             }
     
             const data = await response.json();
-            console.log("✅ Dropbox token response:", data);
+            console.log("✅ Airtable Response:", data);
     
-            // Extract fields
-            const record = data.records.find(rec => rec.fields["Dropbox Token"]);
-            const refreshToken = data.records.find(rec => rec.fields["Dropbox Refresh Token"]);
-            const appKey = data.records.find(rec => rec.fields["Dropbox App Key"]);
-            const appSecret = data.records.find(rec => rec.fields["Dropbox App Secret"]);
+            if (!data.records || data.records.length === 0) {
+                console.warn("⚠️ No records found in Airtable.");
+                return null;
+            }
     
-            if (!appKey || !appSecret) {
+            // Extract Dropbox credentials
+            const record = data.records[0]; // Assume the first record contains the token data
+            const dropboxAccessToken = record.fields["Dropbox Token"] || null;
+            const dropboxRefreshToken = record.fields["Dropbox Refresh Token"] || null;
+            const dropboxAppKey = record.fields["Dropbox App Key"] || null;
+            const dropboxAppSecret = record.fields["Dropbox App Secret"] || null;
+    
+            console.log("🔑 Retrieved Dropbox Token:", dropboxAccessToken);
+    
+            // Ensure we have the necessary keys for refreshing tokens
+            if (!dropboxAppKey || !dropboxAppSecret) {
                 console.error("❌ Dropbox App Key or Secret is missing in Airtable.");
                 return null;
             }
     
-            dropboxAppKey = appKey.fields["Dropbox App Key"];
-            dropboxAppSecret = appSecret.fields["Dropbox App Secret"];
-    
-            if (record && record.fields["Dropbox Token"]) {
-                dropboxAccessToken = record.fields["Dropbox Token"];
-    
-                if (refreshToken && refreshToken.fields["Dropbox Refresh Token"]) {
-                    return await refreshDropboxAccessToken(
-                        refreshToken.fields["Dropbox Refresh Token"], 
-                        dropboxAppKey, 
-                        dropboxAppSecret
-                    );
-                }
-    
-                return dropboxAccessToken;
-            } else {
-                console.warn("⚠️ No Dropbox Token found in Airtable.");
-                return null;
+            // If a refresh token exists, refresh the Dropbox Access Token
+            if (dropboxRefreshToken) {
+                console.log("🔄 Refreshing Dropbox Access Token...");
+                return await refreshDropboxAccessToken(dropboxRefreshToken, dropboxAppKey, dropboxAppSecret, record.id);
             }
+    
+            return dropboxAccessToken;
         } catch (error) {
-            console.error("❌ Error fetching Dropbox token:", error);
+            console.error("❌ Error fetching Dropbox Token:", error);
             return null;
         }
     }
     
-    async function refreshDropboxAccessToken(refreshToken, dropboxAppKey, dropboxAppSecret) {
+    
+    async function refreshDropboxAccessToken(refreshToken, dropboxAppKey, dropboxAppSecret, recordId) {
         console.log("🔄 Refreshing Dropbox Access Token...");
+    
         const dropboxAuthUrl = "https://api.dropboxapi.com/oauth2/token";
-        
+    
         if (!dropboxAppKey || !dropboxAppSecret) {
             console.error("❌ Dropbox App Key or Secret is missing. Cannot refresh token.");
             return null;
@@ -1287,28 +1287,39 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const response = await fetch(dropboxAuthUrl, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: params
             });
     
             if (!response.ok) {
                 const errorResponse = await response.json();
-                console.error(`❌ Error refreshing Dropbox token: ${errorResponse.error_summary}`);
+                console.error("❌ Error refreshing Dropbox token:", errorResponse);
                 return null;
             }
     
             const data = await response.json();
+            console.log("✅ New Dropbox Access Token:", data.access_token);
     
-            // Store the new access token
-            dropboxAccessToken = data.access_token;
-            return dropboxAccessToken;
+            // ✅ Push new token to Airtable
+            const updated = await updateAirtableRecord(window.env.AIRTABLE_TABLE_NAME, recordId, {
+                "Dropbox Token": data.access_token
+            });
+    
+            if (updated) {
+                console.log("✅ Dropbox Token updated in Airtable.");
+            } else {
+                console.error("❌ Failed to update Dropbox Token in Airtable.");
+            }
+    
+            return data.access_token;
         } catch (error) {
             console.error("❌ Error refreshing Dropbox access token:", error);
             return null;
         }
     }
+    
+    
+    
     
     async function fetchCurrentImagesFromAirtable(lotName, imageField) {
         console.log("📡 Fetching images for Lot Name:", lotName);
@@ -1599,33 +1610,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // ✅ Call the function on page load
     document.addEventListener("DOMContentLoaded", fetchAndPopulateSubcontractors);
-    
-    
-    // 🔹 Function to fetch all subcontractors (Handles offsets)
-    async function fetchSubcontractors(baseId, tableId, apiKey) {
-        try {
-            const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
-            const response = await fetch(url, {
-                headers: { Authorization: `Bearer ${apiKey}` }
-            });
-    
-            if (!response.ok) {
-                throw new Error(`❌ Error fetching subcontractors from ${tableId}: ${response.statusText}`);
-            }
-    
-            const data = await response.json();
-    
-            return data.records.map(record => ({
-                name: record.fields.Subcontractor, // Ensure this matches the Airtable field name
-                vanirOffice: record.fields.VanirOffice || "Unknown"
-            })).filter(sub => sub.name); // Filter out any empty names
-    
-        } catch (error) {
-            console.error(`❌ Error fetching subcontractors from table ${tableId}:`, error);
-            return [];
-        }
-    }
-    
+        
     async function getExistingDropboxLink(filePath) {
         const url = "https://api.dropboxapi.com/2/sharing/list_shared_links";
         try {
